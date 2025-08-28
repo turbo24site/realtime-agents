@@ -64,6 +64,7 @@ export const salesAgent = new RealtimeAgent({
         required: ['item_id'],
         additionalProperties: false,
       },
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       execute: async (input: any) => ({ success: true }),
     }),
 
@@ -90,6 +91,7 @@ export const salesAgent = new RealtimeAgent({
         required: ['item_ids', 'phone_number'],
         additionalProperties: false,
       },
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       execute: async (input: any) => ({ checkoutUrl: 'https://example.com/checkout' }),
     }),
   ],

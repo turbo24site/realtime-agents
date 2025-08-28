@@ -88,8 +88,8 @@ Speak at a medium pace—steady and clear. Brief pauses can be used for emphasis
         required: ['phoneNumber'],
         additionalProperties: false,
       },
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       execute: async (input: any) => {
-        const { phoneNumber } = input as { phoneNumber: string };
         return {
           orders: [
             {
@@ -160,6 +160,7 @@ Speak at a medium pace—steady and clear. Brief pauses can be used for emphasis
         required: ['region', 'itemCategory'],
         additionalProperties: false,
       },
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       execute: async (input: any) => {
         return {
           policy: `

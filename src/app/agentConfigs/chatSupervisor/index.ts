@@ -3,75 +3,81 @@
 import { RealtimeAgent } from '@openai/agents/realtime';
 import { getNextResponseFromSupervisor } from './supervisorAgent';
 
-/**
- * Chat agent used in the "chatSupervisor" scenario.
- * - Voice-first, short replies, strict on no financial advice.
- * - Collects name + email + role (Investor / Property Owner / Both).
- * - Offers human handoff when appropriate.
- * - Canada-first compliance tone (esp. Quebec). Jurisdictions vary.
- * - Adds two tools: subscribe_to_list, create_contact_request (uses Vercel env vars).
- */
-
-// ---------- helper ----------
+// --- helpers (server calls) ---
 async function postJSON(url: string | undefined, payload: unknown) {
-  if (!url) return { ok: false, status: 500, error: 'Missing webhook URL env var' };
+  if (!url) {
+    return { ok: false, status: 500, error: 'Missing webhook URL env var' };
+  }
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
   let body: any = null;
-  try { body = await res.json(); } catch { /* noop */ }
+  try { body = await res.json(); } catch { /* ignore non-JSON */ }
   return { ok: res.ok, status: res.status, body };
 }
 
-// ---------- tool registrars ----------
-function subscribeToList(agent: RealtimeAgent) {
-  agent.addTool(
-    {
-      name: 'subscribe_to_list',
-      description: 'Add a lead to the newsletter',
-      parameters: {
-        type: 'object',
-        properties: {
-          name:   { type: 'string' },
-          email:  { type: 'string', format: 'email' },
-          profile:{ type: 'string', enum: ['Investor','Property Owner','Both'] }
-        },
-        required: ['name','email','profile']
-      }
+/**
+ * Tools are factories (same style as getNextResponseFromSupervisor).
+ * We accept an optional agent param to match the expected signature.
+ */
+const subscribeToList = (_agent?: unknown) => ({
+  name: 'subscribe_to_list',
+  description: 'Add a lead to the newsletter',
+  parameters: {
+    type: 'object',
+    properties: {
+      name:   { type: 'string' },
+      email:  { type: 'string', format: 'email' },
+      profile:{ type: 'string', enum: ['Investor','Property Owner','Both'] }
     },
-    async ({ name, email, profile }) => {
-      const payload = { name, email, profile, source: 'realtime-agent' };
-      const r = await postJSON(process.env.SUBSCRIBE_WEBHOOK, payload);
-      return r.ok ? { ok: true } : { ok: false, status: r.status, error: r['error'] || r['body'] };
-    }
-  );
-}
+    required: ['name','email','profile']
+  },
+  // Support different SDKs by exposing both keys:
+  handler: async ({ name, email, profile }: any) => {
+    const r = await postJSON(process.env.SUBSCRIBE_WEBHOOK, {
+      name, email, profile, source: 'realtime-agent',
+    });
+    return r.ok ? { ok: true } : { ok: false, status: r.status, error: r['error'] || r['body'] };
+  },
+  execute: async (args: any) => {
+    const { name, email, profile } = args || {};
+    const r = await postJSON(process.env.SUBSCRIBE_WEBHOOK, {
+      name, email, profile, source: 'realtime-agent',
+    });
+    return r.ok ? { ok: true } : { ok: false, status: r.status, error: r['error'] || r['body'] };
+  },
+} as any);
 
-function createContactRequest(agent: RealtimeAgent) {
-  agent.addTool(
-    {
-      name: 'create_contact_request',
-      description: 'Ask the human team to follow up with the user',
-      parameters: {
-        type: 'object',
-        properties: {
-          name:  { type: 'string' },
-          email: { type: 'string', format: 'email' },
-          topic: { type: 'string' }
-        },
-        required: ['email','topic']
-      }
+const createContactRequest = (_agent?: unknown) => ({
+  name: 'create_contact_request',
+  description: 'Ask the human team to follow up with the user',
+  parameters: {
+    type: 'object',
+    properties: {
+      name:  { type: 'string' },
+      email: { type: 'string', format: 'email' },
+      topic: { type: 'string' }
     },
-    async (payload) => {
-      const r = await postJSON(process.env.CONTACT_WEBHOOK, { ...payload, source: 'realtime-agent' });
-      return r.ok ? { created: true } : { created: false, status: r.status, error: r['error'] || r['body'] };
-    }
-  );
-}
+    required: ['email','topic']
+  },
+  handler: async ({ name, email, topic }: any) => {
+    const r = await postJSON(process.env.CONTACT_WEBHOOK, {
+      name, email, topic, source: 'realtime-agent',
+    });
+    return r.ok ? { created: true } : { created: false, status: r.status, error: r['error'] || r['body'] };
+  },
+  execute: async (args: any) => {
+    const { name, email, topic } = args || {};
+    const r = await postJSON(process.env.CONTACT_WEBHOOK, {
+      name, email, topic, source: 'realtime-agent',
+    });
+    return r.ok ? { created: true } : { created: false, status: r.status, error: r['error'] || r['body'] };
+  },
+} as any);
 
-// ---------- agent ----------
+// --- agent config ---
 const chatAgent = new RealtimeAgent({
   name: 'Sophie',
   voice: 'sage',
@@ -93,19 +99,14 @@ INTERACTION STYLE
 • Warm, concise, helpful. Avoid jargon; define terms briefly on first use.
 • If unsure: ask a brief clarifying question or offer human follow-up.
   `.trim(),
+  // Pass tool factories here (same as your supervisor tool)
   tools: [
-    // Existing supervisor escalation
     getNextResponseFromSupervisor,
-
-    // New tools
     subscribeToList,
     createContactRequest,
-  ],
+  ] as any,
 });
 
 export const chatSupervisorScenario = [chatAgent];
-
-// Name used by guardrails/CX copy
 export const chatSupervisorCompanyName = 'AssetsWaves';
-
 export default chatSupervisorScenario;
